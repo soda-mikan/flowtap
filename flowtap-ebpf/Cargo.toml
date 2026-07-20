@@ -1,0 +1,17 @@
+[package]
+name = "flowtap-ebpf"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+aya-ebpf.workspace = true
+flowtap-common = { path = "../flowtap-common" }
+
+[build-dependencies]
+which.workspace = true
+
+[[bin]]
+name = "flowtap"
+path = "src/main.rs"
+

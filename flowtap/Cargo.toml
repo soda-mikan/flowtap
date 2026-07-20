@@ -1,0 +1,25 @@
+[package]
+name = "flowtap"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+anyhow = { workspace = true, default-features = true }
+aya.workspace = true
+chrono = { workspace = true, features = ["clock", "std"] }
+clap = { workspace = true, features = ["std", "derive", "help", "usage", "error-context"] }
+flowtap-common = { path = "../flowtap-common", features = ["user"] }
+libc.workspace = true
+serde = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true, features = ["std"] }
+tokio = { workspace = true, features = ["macros", "rt-multi-thread", "net", "signal"] }
+
+[build-dependencies]
+anyhow = { workspace = true, default-features = true }
+aya-build.workspace = true
+cargo_metadata.workspace = true
+
+[[bin]]
+name = "flowtap"
+path = "src/main.rs"
