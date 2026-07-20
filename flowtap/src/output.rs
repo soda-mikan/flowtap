@@ -115,13 +115,14 @@ impl Processor {
                 Err(error) => eprintln!("failed to serialize event: {error}"),
             }
         } else {
+            let comm = escape_table_field(&comm);
             println!(
                 "{:<32} {:<7} {:<15} {:<11} {}",
                 timestamp,
                 event.pid,
                 comm,
                 kind.as_str(),
-                escape_table_detail(&detail)
+                escape_table_field(&detail)
             );
         }
     }
@@ -207,21 +208,37 @@ fn utf8_lossy(bytes: &[u8], requested_length: usize) -> String {
     String::from_utf8_lossy(&bytes[..end]).into_owned()
 }
 
-fn escape_table_detail(value: &str) -> String {
-    value
-        .replace('\\', "\\\\")
-        .replace('\r', "\\r")
-        .replace('\n', "\\n")
-        .replace('\t', "\\t")
-        .replace('\0', "\\0")
+fn escape_table_field(value: &str) -> String {
+    let mut escaped = String::with_capacity(value.len());
+    for character in value.chars() {
+        match character {
+            '\\' => escaped.push_str("\\\\"),
+            '\r' => escaped.push_str("\\r"),
+            '\n' => escaped.push_str("\\n"),
+            '\t' => escaped.push_str("\\t"),
+            '\0' => escaped.push_str("\\0"),
+            character if character.is_control() => escaped.extend(character.escape_default()),
+            character => escaped.push(character),
+        }
+    }
+    escaped
 }
 
 #[cfg(test)]
 mod tests {
-    use super::escape_table_detail;
+    use super::escape_table_field;
 
     #[test]
     fn table_output_escapes_control_characters() {
-        assert_eq!(escape_table_detail("a\r\nb\t"), "a\\r\\nb\\t");
+        assert_eq!(
+            escape_table_field("a\r\nb\t\0\\\u{1b}\u{7f}"),
+            "a\\r\\nb\\t\\0\\\\\\u{1b}\\u{7f}"
+        );
+    }
+
+    #[test]
+    fn table_output_contains_no_literal_control_characters() {
+        let escaped = escape_table_field("\u{1b}]0;title\u{7}text");
+        assert!(escaped.chars().all(|character| !character.is_control()));
     }
 }

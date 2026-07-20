@@ -4,7 +4,7 @@ members = ["flowtap", "flowtap-common", "flowtap-ebpf"]
 default-members = ["flowtap", "flowtap-common"]
 
 [workspace.package]
-version = "0.0.1-beta.1"
+version = "0.0.2-beta"
 edition = "2024"
 license = "MIT"
 

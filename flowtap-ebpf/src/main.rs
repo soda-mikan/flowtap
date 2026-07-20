@@ -124,12 +124,15 @@ fn try_ssl_write(ctx: &ProbeContext) -> Result<(), i64> {
     }
 
     let buffer: *const u8 = ctx.arg(1).ok_or(1i64)?;
-    let length: i32 = ctx.arg(2).ok_or(1i64)?;
-    if buffer.is_null() || length <= 0 {
+    let raw_length: u64 = ctx.arg(2).ok_or(1i64)?;
+    let Some(length) = positive_openssl_length(raw_length) else {
+        return Ok(());
+    };
+    if buffer.is_null() {
         return Ok(());
     }
 
-    emit_tls(ctx, EventType::TlsWrite, buffer, length as u32)
+    emit_tls(ctx, EventType::TlsWrite, buffer, length)
 }
 
 #[uprobe]
@@ -181,17 +184,28 @@ fn try_ssl_read_return(ctx: &RetProbeContext) -> Result<(), i64> {
     let args = unsafe { args_ptr.read() };
     let _ = READ_ARGS.remove(&tid);
 
-    let length = ctx.ret::<i32>();
-    if length <= 0 || !should_trace(ctx) {
+    let raw_length = ctx.ret::<u64>();
+    let Some(length) = positive_openssl_length(raw_length) else {
+        return Ok(());
+    };
+    if !should_trace(ctx) {
         return Ok(());
     }
 
-    emit_tls(
-        ctx,
-        EventType::TlsRead,
-        args.buffer as *const u8,
-        length as u32,
-    )
+    emit_tls(ctx, EventType::TlsRead, args.buffer as *const u8, length)
+}
+
+#[inline(always)]
+fn positive_openssl_length(raw_length: u64) -> Option<u64> {
+    // OpenSSL exposes these lengths as signed 32-bit ints, but uprobe
+    // registers are 64-bit and their upper half is not verifier-bounded.
+    // Reject negative/zero low halves and explicitly mask the accepted value
+    // so helper size arguments have a non-negative 64-bit range.
+    if raw_length & (1u64 << 31) != 0 {
+        return None;
+    }
+    let length = raw_length & i32::MAX as u64;
+    if length == 0 { None } else { Some(length) }
 }
 
 #[inline(always)]
@@ -248,19 +262,22 @@ fn emit_tls<C: EbpfContext>(
     ctx: &C,
     kind: EventType,
     buffer: *const u8,
-    supplied_length: u32,
+    supplied_length: u64,
 ) -> Result<(), i64> {
+    // BPF helpers receive arguments in 64-bit registers. Keep the bounds
+    // calculation 64-bit so older verifiers retain the zero-extended range
+    // when this value is passed as bpf_probe_read_user's size argument.
     let mut capture_length = supplied_length;
     let max_configured = CONFIG
         .get_ptr(0)
-        .map(|ptr| unsafe { (*ptr).max_payload_bytes })
-        .unwrap_or(128);
+        .map(|ptr| unsafe { (*ptr).max_payload_bytes as u64 })
+        .unwrap_or(128u64);
 
     if capture_length > max_configured {
         capture_length = max_configured;
     }
-    if capture_length > MAX_PAYLOAD_BYTES as u32 {
-        capture_length = MAX_PAYLOAD_BYTES as u32;
+    if capture_length > MAX_PAYLOAD_BYTES as u64 {
+        capture_length = MAX_PAYLOAD_BYTES as u64;
     }
     if capture_length == 0 {
         return Ok(());
@@ -268,7 +285,7 @@ fn emit_tls<C: EbpfContext>(
 
     let event = begin_event(ctx, kind)?;
     unsafe {
-        (*event).payload_len = capture_length;
+        (*event).payload_len = capture_length as u32;
         if supplied_length > capture_length {
             (*event).flags |= FLAG_TRUNCATED;
         }
@@ -279,7 +296,7 @@ fn emit_tls<C: EbpfContext>(
     let result = unsafe {
         bpf_probe_read_user(
             (*event).payload.as_mut_ptr().cast::<c_void>(),
-            capture_length,
+            capture_length as u32,
             buffer.cast::<c_void>(),
         )
     };

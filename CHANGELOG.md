@@ -5,6 +5,17 @@
 
 ## [Unreleased]
 
+## [0.0.2-beta] - 2026-07-20
+
+### Fixed
+
+- Debian 12 / Linux 6.1のeBPF verifierがTLS payload読み取り長を負数候補として拒否する問題を修正
+
+### Security
+
+- TLS payloadやprocess名に含まれる制御文字をtable出力でescapeし、terminal escape injectionを防止
+- 機密性の高いobservability dataを安全に報告するためのsecurity policyを追加
+
 ## [0.0.1-beta.1] - 2026-07-09
 
 初回public betaです。
@@ -20,6 +31,6 @@
 - experimental OpenSSL `SSL_write` / `SSL_read` plaintext観測
 - payload上限とHTTP headerの簡易redact
 
-[Unreleased]: https://github.com/YOUR_GITHUB_USER/flowtap/compare/v0.0.1-beta.1...HEAD
-[0.0.1-beta.1]: https://github.com/YOUR_GITHUB_USER/flowtap/releases/tag/v0.0.1-beta.1
-
+[Unreleased]: https://github.com/soda-mikan/flowtap/compare/v0.0.2-beta...HEAD
+[0.0.2-beta]: https://github.com/soda-mikan/flowtap/releases/tag/v0.0.2-beta
+[0.0.1-beta.1]: https://github.com/soda-mikan/flowtap/releases/tag/v0.0.1-beta.1

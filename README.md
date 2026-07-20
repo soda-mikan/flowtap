@@ -293,6 +293,9 @@ sudo dmesg --ctime | tail -n 100
 - TLS captureはOpenSSL `SSL_write` / `SSL_read` のみ
 - redactはbest-effortであり、機密情報除去の保証ではない
 
+脆弱性の非公開報告方法と、安全な運用上の注意は
+[Security Policy](SECURITY.md)を参照してください。
+
 ## License
 
 MIT
