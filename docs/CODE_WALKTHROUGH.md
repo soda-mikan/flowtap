@@ -10,8 +10,8 @@
 - 単独の `{` / `}` / `);`: 周囲の説明に含める
 - `README.md`、`CHANGELOG.md`、`docs/*.md`: 文章自体が説明になっている
 
-行番号は `0.0.1-beta.1` 時点です。source変更後にずれた場合は、関数名や変数名で
-検索してください。
+説明内容はmainの変更に合わせて加筆しています。表中の行番号は参考値であり、source変更で
+ずれるため、正確な位置は関数名や変数名で検索してください。
 
 ## 1. 最初に全体像
 
@@ -52,7 +52,6 @@ Linux event
 | `README.md` | 利用者向けbuild/run/security/troubleshooting |
 | `CHANGELOG.md` | releaseごとの変更履歴 |
 | `LICENSE` | public sourceに適用するMIT License本文 |
-| `docs/PUBLISHING.md` | public repositoryとbeta releaseの作り方 |
 | `docs/CODE_WALKTHROUGH.md` | 今読んでいる学習用解説 |
 | `flowtap-common/Cargo.toml` | 共有crateのmanifest |
 | `flowtap-common/src/lib.rs` | Event、Config、定数 |
@@ -90,7 +89,7 @@ Linux event
 | 3 `members = ...` | workspaceへCLI、共有型、eBPFの3 crateを登録する。 |
 | 4 `default-members = ...` | bare `cargo build` ではCLIと共有型を入口にする。eBPFはCLIのbuild scriptから専用targetでbuildされる。 |
 | 6 `[workspace.package]` | 各crateが継承できるpackage metadata。 |
-| 7 `version` | prereleaseを含むSemVer。Git tagは `v0.0.1-beta.1` にする。 |
+| 7 `version` | prereleaseを含むSemVer。release時はこの値を単一の正とし、Git tagには先頭に `v` を付ける。 |
 | 8 `edition = "2024"` | Rust 2024 editionのsyntaxとlint規則を使う。 |
 | 9 `license` | source codeをMIT Licenseで公開することを宣言し、各crateへ継承する。 |
 | 11 `[workspace.dependencies]` | dependency versionを一か所に集約する。 |
@@ -310,7 +309,7 @@ Linux event
 |---|---|
 | 197 `inline(always)` | 小関数callを消しverifierがcontrol flowを追いやすくする。 |
 | 198 `should_trace` | 全probe共通filter。EbpfContext genericで各context型に対応する。 |
-| 199–201 | CONFIGが読めない場合は観測を止めないdefault allow。 |
+| 213–215 | CONFIGが読めない場合はeventを生成しないfail-closed。filter設定不明時の広域観測を避ける。 |
 | 202 | map pointerからConfigをvalue copyする。 |
 | 204–206 | target_pidが非0かつcurrent TGIDと不一致ならreject。 |
 | 207–209 | comm filter無効ならaccept。 |
@@ -331,7 +330,7 @@ Linux event
 | 243 | 初期化済みSCRATCH pointerを返す。 |
 | 246–252 | `emit_tls` のsignature。context、種別、user pointer、OpenSSL lengthを受け取る。 |
 | 253 | まず要求length全体を候補にする。 |
-| 254–257 | CONFIG index 0の上限を読み、なければ128にする。 |
+| 271–274 | CONFIG index 0の上限を読む。取得できなければTLS eventを生成しないfail-closed。 |
 | 259–261 | CLI指定上限へclampする。 |
 | 262–264 | Configが壊れていてもcompile-time最大4096を超えないよう再clampする。 |
 | 265–267 | 最終長0なら何もしない。 |
@@ -402,9 +401,10 @@ Linux event
 | 32–34 `pid` | `--pid` を1以上のu32に制限する。 |
 | 36–38 `comm` | `--comm <STRING>`。追加のbyte長検証は後で行う。 |
 | 40–42 `tls_plaintext` | 明示した場合だけTLS probeをload/attachするgate。 |
-| 44–46 `libssl_path` | TLS optionと同時指定をclapが要求する。 |
-| 48–54 `max_payload_bytes` | default 128、CLI parser段階で1..=4096に制限する。 |
-| 56–58 `redact` | TLS有効時だけ使える簡易mask option。 |
+| 44–50 `all_processes` | 無filterのTLS広域取得を明示する危険option。PID/comm filterとは排他。 |
+| 52–54 `libssl_path` | TLS optionと同時指定をclapが要求する。 |
+| 56–62 `max_payload_bytes` | default 128、CLI parser段階で1..=4096に制限する。 |
+| 64–66 `redact` | TLS有効時だけ使える簡易mask option。 |
 
 ### `main` の実行順
 
@@ -412,9 +412,10 @@ Linux event
 |---|---|
 | 61 `#[tokio::main]` | async mainをTokio runtime起動codeへ展開する。 |
 | 62 | main全体をanyhow Resultにし、詳細errorを返す。 |
-| 63 | command lineをArgsへparseする。無効値ならhelp付きで終了する。 |
-| 64 | file存在やcomm byte長を追加検証する。 |
-| 65 | 古いkernel向けにmemlock上限を上げる。 |
+| 71 | command lineをArgsへparseする。無効値ならhelp付きで終了する。 |
+| 72 | TLS scope、file存在、comm byte長を追加検証する。 |
+| 73 | `--all-processes` 使用時は機密dataの広域取得をstderrへ警告する。 |
+| 74 | 古いkernel向けにmemlock上限を上げる。 |
 | 67–71 | build時に埋め込まれたalignment済みeBPF ELF bytesをAyaでloadする。 |
 | 73 | CLI filter/max payloadをCONFIG mapへ書く。program load前なので最初のeventから有効。 |
 | 74 | EXECとCONNECTを常にattachする。 |
@@ -438,7 +439,7 @@ Linux event
 | 行 | 解説 |
 |---|---|
 | 121 `validate_args` | clapの相互依存以外のruntime検証。 |
-| 122–130 | TLS有効時にlibssl path必須かつregular fileであることを確認する。 |
+| 131–145 | TLS有効時はPID/comm scopeまたは明示`--all-processes`を要求し、libssl pathがregular fileか確認する。 |
 | 132 | comm指定時だけ内部を検証する。 |
 | 133–135 | 空文字を拒否する。 |
 | 136–138 | Linux commの終端NULを考慮し15 bytes以下にする。`len` はbyte長。 |
@@ -573,7 +574,7 @@ Linux event
 6. AsyncFdがreadableになる
 7. `decode_event` がbytesをEventへcopyする
 8. Processorが同じPIDのEXEC cacheを探す
-9. `93.184.216.34:80` をtableまたはJSONへ出す
+9. 文書用address `192.0.2.34:80` をtableまたはJSONへ出す
 
 ### `curl https://example.com/` のTLS_READ
 

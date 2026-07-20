@@ -211,7 +211,7 @@ fn positive_openssl_length(raw_length: u64) -> Option<u64> {
 #[inline(always)]
 fn should_trace<C: EbpfContext>(ctx: &C) -> bool {
     let Some(config_ptr) = CONFIG.get_ptr(0) else {
-        return true;
+        return false;
     };
     let config = unsafe { config_ptr.read() };
 
@@ -268,10 +268,10 @@ fn emit_tls<C: EbpfContext>(
     // calculation 64-bit so older verifiers retain the zero-extended range
     // when this value is passed as bpf_probe_read_user's size argument.
     let mut capture_length = supplied_length;
-    let max_configured = CONFIG
-        .get_ptr(0)
-        .map(|ptr| unsafe { (*ptr).max_payload_bytes as u64 })
-        .unwrap_or(128u64);
+    let Some(config_ptr) = CONFIG.get_ptr(0) else {
+        return Err(1);
+    };
+    let max_configured = unsafe { (*config_ptr).max_payload_bytes as u64 };
 
     if capture_length > max_configured {
         capture_length = max_configured;

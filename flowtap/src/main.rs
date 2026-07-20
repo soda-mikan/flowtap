@@ -41,6 +41,14 @@ struct Args {
     #[arg(long)]
     tls_plaintext: bool,
 
+    /// Allow TLS plaintext capture from every process using the selected libssl.
+    #[arg(
+        long,
+        requires = "tls_plaintext",
+        conflicts_with_all = ["pid", "comm"]
+    )]
+    all_processes: bool,
+
     /// Exact path to the libssl shared object used by the target process.
     #[arg(long, requires = "tls_plaintext")]
     libssl_path: Option<PathBuf>,
@@ -62,6 +70,7 @@ struct Args {
 async fn main() -> anyhow::Result<()> {
     let args = Args::parse();
     validate_args(&args)?;
+    warn_about_unscoped_tls(&args);
     raise_memlock_limit();
 
     let mut ebpf = Ebpf::load(aya::include_bytes_aligned!(concat!(
@@ -120,6 +129,12 @@ async fn main() -> anyhow::Result<()> {
 
 fn validate_args(args: &Args) -> anyhow::Result<()> {
     if args.tls_plaintext {
+        if args.pid.is_none() && args.comm.is_none() && !args.all_processes {
+            bail!(
+                "--tls-plaintext requires --pid <PID> or --comm <NAME>; pass \
+                 --all-processes only for intentional system-wide plaintext capture"
+            );
+        }
         let path = args
             .libssl_path
             .as_ref()
@@ -141,6 +156,15 @@ fn validate_args(args: &Args) -> anyhow::Result<()> {
         }
     }
     Ok(())
+}
+
+fn warn_about_unscoped_tls(args: &Args) {
+    if args.tls_plaintext && args.all_processes {
+        eprintln!(
+            "warning: --all-processes captures OpenSSL plaintext from every process using the \
+             selected libssl; output may contain credentials, cookies, or personal data"
+        );
+    }
 }
 
 fn write_config(ebpf: &mut Ebpf, args: &Args) -> anyhow::Result<()> {
@@ -246,5 +270,70 @@ fn raise_memlock_limit() {
             "warning: could not raise RLIMIT_MEMLOCK: {}",
             std::io::Error::last_os_error()
         );
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn tls_args() -> Args {
+        Args {
+            json: false,
+            pid: None,
+            comm: None,
+            tls_plaintext: true,
+            all_processes: false,
+            libssl_path: Some(std::env::current_exe().expect("current test executable")),
+            max_payload_bytes: 128,
+            redact: false,
+        }
+    }
+
+    #[test]
+    fn tls_plaintext_requires_an_explicit_scope() {
+        let error = validate_args(&tls_args()).expect_err("unscoped TLS must be rejected");
+        assert!(error.to_string().contains("--all-processes"));
+    }
+
+    #[test]
+    fn tls_plaintext_accepts_a_pid_scope() {
+        let mut args = tls_args();
+        args.pid = Some(42);
+        validate_args(&args).expect("PID-scoped TLS should be accepted");
+    }
+
+    #[test]
+    fn tls_plaintext_accepts_a_comm_scope() {
+        let mut args = tls_args();
+        args.comm = Some("curl".to_owned());
+        validate_args(&args).expect("comm-scoped TLS should be accepted");
+    }
+
+    #[test]
+    fn tls_plaintext_accepts_explicit_all_processes() {
+        let mut args = tls_args();
+        args.all_processes = true;
+        validate_args(&args).expect("explicit system-wide TLS should be accepted");
+    }
+
+    #[test]
+    fn all_processes_requires_tls_plaintext() {
+        let result = Args::try_parse_from(["flowtap", "--all-processes"]);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn all_processes_conflicts_with_process_filters() {
+        let result = Args::try_parse_from([
+            "flowtap",
+            "--tls-plaintext",
+            "--libssl-path",
+            "/tmp/libssl.so",
+            "--pid",
+            "42",
+            "--all-processes",
+        ]);
+        assert!(result.is_err());
     }
 }

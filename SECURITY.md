@@ -26,6 +26,9 @@ OpenSSL. Run it only on systems and processes you are authorized to inspect.
 - `--redact` is a best-effort HTTP/1 header filter, not a security boundary. It
   does not fully cover split records, HTTP/2 HPACK, message bodies, or arbitrary
   application protocols.
-- Prefer `--pid` or `--comm`, keep `--max-payload-bytes` small, and avoid
-  enabling `--tls-plaintext` when it is not required.
+- `--tls-plaintext` requires `--pid` or `--comm`. System-wide capture requires
+  the explicit `--all-processes` flag and emits a warning because it can expose
+  plaintext from every process using the selected libssl.
+- Keep `--max-payload-bytes` small and avoid enabling `--tls-plaintext` when it
+  is not required.
 - Do not attach real captures, logs, or screenshots to public bug reports.

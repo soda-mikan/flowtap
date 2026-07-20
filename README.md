@@ -44,7 +44,6 @@ rustls、Java、NSS、GnuTLS、BoringSSL は観測対象外です。
 学習・公開用の補助資料:
 
 - [コード逐行解説](docs/CODE_WALKTHROUGH.md)
-- [GitHub public repository / beta release手順](docs/PUBLISHING.md)
 - [変更履歴](CHANGELOG.md)
 
 ## 必要条件
@@ -106,7 +105,7 @@ curl http://example.com/
 ```text
 TIME                             PID     COMM            EVENT       DETAIL
 2026-07-09T01:23:10.123+09:00    2311    curl            EXEC        curl http://example.com/
-2026-07-09T01:23:10.130+09:00    2311    curl            CONNECT     93.184.216.34:80
+2026-07-09T01:23:10.130+09:00    2311    curl            CONNECT     192.0.2.34:80
 ```
 
 EXEC時に `/proc/<pid>/cmdline` がまだ読めれば引数を含むコマンドラインを表示し、
@@ -119,7 +118,7 @@ sudo ./target/release/flowtap --json
 ```
 
 ```json
-{"time":"2026-07-09T01:23:10.130+09:00","pid":2311,"tid":2311,"comm":"curl","event":"CONNECT","detail":"93.184.216.34:80","correlated_exec":"curl http://example.com/","truncated":false}
+{"time":"2026-07-09T01:23:10.130+09:00","pid":2311,"tid":2311,"comm":"curl","event":"CONNECT","detail":"192.0.2.34:80","correlated_exec":"curl http://example.com/","truncated":false}
 ```
 
 ### PID / command filter
@@ -133,6 +132,11 @@ sudo ./target/release/flowtap --comm curl
 両方を指定した場合はAND条件です。フィルタはeBPF側でイベント生成前に適用されます。
 
 ## Experimental: OpenSSL TLS plaintext
+
+`--tls-plaintext` には `--pid` または `--comm` による対象指定が必要です。
+フィルタなしの広域取得は拒否されます。全processの取得が意図した操作である場合だけ
+`--all-processes` を指定できますが、選択したlibsslを使う全processのcredential、
+Cookie、個人情報を取得し得るため、起動時にstderrへ警告が出ます。
 
 まず対象の `curl` がOpenSSLを使っているか、実際のlibssl pathを確認します。
 
@@ -292,6 +296,9 @@ sudo dmesg --ctime | tail -n 100
 - Ring Bufferが満杯の場合はイベントをdropする（eBPF処理自体は継続）
 - TLS captureはOpenSSL `SSL_write` / `SSL_read` のみ
 - redactはbest-effortであり、機密情報除去の保証ではない
+- `SSL_read` のreturn probeがprocess/thread終了などで実行されない場合、対応する
+  `READ_ARGS` entryが残る可能性がある。Map上限は4096で、満杯時は以降のread観測が
+  欠落し得る
 
 脆弱性の非公開報告方法と、安全な運用上の注意は
 [Security Policy](SECURITY.md)を参照してください。
@@ -299,3 +306,6 @@ sudo dmesg --ctime | tail -n 100
 ## License
 
 MIT
+
+eBPF objectが宣言する `Dual MIT/GPL` は、kernelが利用可能なBPF helperを判断するための
+program license宣言です。repositoryのsource code自体にはMIT Licenseが適用されます。
